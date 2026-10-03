@@ -52,6 +52,10 @@
 
 #define APPLE_RTKIT_OSLOG_TYPE GENMASK_ULL(63, 56)
 #define APPLE_RTKIT_OSLOG_BUFFER_REQUEST 1
+#define APPLE_RTKIT_OSLOG_FLUSH 2
+/* A flush is acknowledged with bits 63:60 and 31:0 kept (macOS 27.0
+ * RTBuddyOSLogEndpoint::_handleFlushRequest). */
+#define APPLE_RTKIT_OSLOG_FLUSH_KEEP (GENMASK_ULL(63, 60) | GENMASK_ULL(31, 0))
 #define APPLE_RTKIT_OSLOG_SIZE GENMASK_ULL(55, 36)
 #define APPLE_RTKIT_OSLOG_IOVA GENMASK_ULL(35, 0)
 
@@ -96,6 +100,16 @@ struct apple_rtkit *apple_rtkit_init(struct mbox_chan *chan, void *cookie,
 	rtk->shmem_destroy = shmem_destroy;
 
 	return rtk;
+}
+
+/*
+ * Take over a session an earlier stage started and left running: no boot, no
+ * power state messages, only the mailbox service of apple_rtkit_poll().
+ */
+void apple_rtkit_attach(struct apple_rtkit *rtk)
+{
+	rtk->iop_pwr = APPLE_RTKIT_PWR_STATE_ON;
+	rtk->ap_pwr = APPLE_RTKIT_PWR_STATE_ON;
 }
 
 void apple_rtkit_free(struct apple_rtkit *rtk)
@@ -230,6 +244,13 @@ int apple_rtkit_poll(struct apple_rtkit *rtk, ulong timeout)
 
 		if (msgtype == APPLE_RTKIT_OSLOG_BUFFER_REQUEST) {
 			ret = rtkit_handle_buf_req(rtk, endpoint, &msg);
+			if (ret < 0)
+				return ret;
+			return 0;
+		} else if (msgtype == APPLE_RTKIT_OSLOG_FLUSH) {
+			msg.msg0 = (msg.msg0 & APPLE_RTKIT_OSLOG_FLUSH_KEEP) |
+				FIELD_PREP(APPLE_RTKIT_OSLOG_TYPE, APPLE_RTKIT_OSLOG_FLUSH);
+			ret = mbox_send(rtk->chan, &msg);
 			if (ret < 0)
 				return ret;
 			return 0;

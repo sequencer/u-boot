@@ -24,6 +24,8 @@ struct rtkit_helper_priv {
 	struct mbox_chan chan;
 	struct apple_rtkit *rtk;
 	bool sram_stolen;
+	/* m1n1 started the coprocessor and left it running (T8132 MTP). */
+	bool attached;
 };
 
 static int shmem_setup(void *cookie, struct apple_rtkit_buffer *buf) {
@@ -85,6 +87,15 @@ static int rtkit_helper_probe(struct udevice *dev)
 	if (ret < 0)
 		return ret;
 
+	priv->attached = dev_read_bool(dev, "apple,rtkit-running");
+	if (priv->attached) {
+		priv->rtk = apple_rtkit_init(&priv->chan, dev, shmem_setup, shmem_destroy);
+		if (!priv->rtk)
+			return -ENOMEM;
+		apple_rtkit_attach(priv->rtk);
+		return 0;
+	}
+
 	ctrl = readl(priv->asc + REG_CPU_CTRL);
 	writel(ctrl | REG_CPU_CTRL_RUN, priv->asc + REG_CPU_CTRL);
 
@@ -111,6 +122,13 @@ static int rtkit_helper_remove(struct udevice *dev)
 {
 	struct rtkit_helper_priv *priv = dev_get_priv(dev);
 	u32 ctrl;
+
+	/* The session goes on to Linux as it is. */
+	if (priv->attached) {
+		apple_rtkit_free(priv->rtk);
+		priv->rtk = NULL;
+		return 0;
+	}
 
 	apple_rtkit_shutdown(priv->rtk, APPLE_RTKIT_PWR_STATE_QUIESCED);
 
