@@ -73,6 +73,8 @@ struct apple_dart_priv {
 	void *base;
 	u64 *l1, *l2;
 	int bypass, shift;
+	/* An earlier stage locked the stream tables and still uses them. */
+	int locked;
 
 	struct lmb io_lmb;
 
@@ -195,6 +197,17 @@ static int apple_dart_probe(struct udevice *dev)
 		priv->ttbr_base = DART_T8110_TTBR_BASE;
 		priv->ttbr_valid = DART_T8110_TTBR_VALID;
 		priv->flush_tlb = apple_dart_t8110_flush_tlb;
+
+		/*
+		 * m1n1 locks a DART whose mappings must survive into the OS
+		 * (dart-mtp with the running MTP session on T8132): its TTBRs and
+		 * TCRs stay as they are, so U-Boot neither resets nor uses it.
+		 */
+		if (readl(priv->base + DART_T8110_PROTECT) & DART_T8110_PROTECT_TTBR_TCR) {
+			priv->locked = 1;
+			priv->bypass = 1;
+			return 0;
+		}
 	} else {
 		priv->nsid = 16;
 		priv->nttbr = 4;
@@ -291,6 +304,9 @@ static int apple_dart_remove(struct udevice *dev)
 {
 	struct apple_dart_priv *priv = dev_get_priv(dev);
 	int sid, i;
+
+	if (priv->locked)
+		return 0;
 
 	/* Disable translations. */
 	for (sid = 0; sid < priv->nsid; sid++)
