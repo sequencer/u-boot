@@ -78,9 +78,6 @@ struct apple_rtkit {
 
 	int iop_pwr;
 	int ap_pwr;
-
-	/* Endpoints the next stage starts for the first time itself. */
-	u64 skip_endpoints;
 };
 
 struct apple_rtkit *apple_rtkit_init(struct mbox_chan *chan, void *cookie,
@@ -99,11 +96,6 @@ struct apple_rtkit *apple_rtkit_init(struct mbox_chan *chan, void *cookie,
 	rtk->shmem_destroy = shmem_destroy;
 
 	return rtk;
-}
-
-void apple_rtkit_skip_endpoint(struct apple_rtkit *rtk, int endpoint)
-{
-	rtk->skip_endpoints |= BIT_ULL(endpoint);
 }
 
 void apple_rtkit_free(struct apple_rtkit *rtk)
@@ -406,8 +398,6 @@ wait_epmap:
 		default:
 			break;
 		}
-		if (endpoints[i] < 64 && rtk->skip_endpoints & BIT_ULL(endpoints[i]))
-			continue;
 
 		/* Request endpoint. */
 		msg.msg0 = FIELD_PREP(APPLE_RTKIT_MGMT_TYPE, APPLE_RTKIT_MGMT_STARTEP) |

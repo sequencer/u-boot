@@ -92,16 +92,6 @@ static int rtkit_helper_probe(struct udevice *dev)
 	if (!priv->rtk)
 		return -ENOMEM;
 
-	/*
-	 * The OSLog session does not survive a second start on T8132 MTP: the
-	 * J713 26A428 firmware re-walks the OSLog sources of the first session
-	 * (0x103b6cc) and faults in strlen on a stale source name
-	 * (0x10381cc) once Linux starts the endpoint again after the hand-off.
-	 * Leave the endpoint to Linux there, so its start is the first one.
-	 */
-	if (device_is_compatible(dev, "apple,t8132-mtp"))
-		apple_rtkit_skip_endpoint(priv->rtk, APPLE_RTKIT_EP_OSLOG);
-
 	ret = apple_rtkit_boot(priv->rtk);
 	if (ret < 0) {
 		printf("%s: Helper apple_rtkit_boot returned: %d\n", __func__, ret);
